@@ -1,24 +1,30 @@
 import { formatDistance, formatDuration } from './format.js';
 import { haversine } from './geo.js';
 
-export function preRank(places, { midpoint, a, b, radiusM, limit = 8 }) {
+export function preRank(places, { midpoint, people, radiusM, limit = 8 }) {
   const prepared = places
-    .map((place) => ({
-      ...place,
-      distanceMid: haversine(midpoint, place),
-      distanceA: haversine(a, place),
-      distanceB: haversine(b, place),
-    }))
-    .filter((place) => place.distanceMid <= radiusM);
+    .map((place) => {
+      const distances = people.map((person) => haversine(person, place));
+      const distanceMid = haversine(midpoint, place);
+      const maxDistance = Math.max(...distances);
+      const minDistance = Math.min(...distances);
+      const balanceM = maxDistance - minDistance;
+      const balanceRatio = balanceM / Math.max(maxDistance, 1);
+      const closeness = 1 - Math.min(distanceMid / radiusM, 1);
+      const rating = Number.isFinite(place.rating) ? place.rating / 5 : 0.6;
 
-  for (const place of prepared) {
-    const farthest = Math.max(place.distanceA, place.distanceB, 1);
-    place.balanceM = Math.abs(place.distanceA - place.distanceB);
-    place.balanceRatio = place.balanceM / farthest;
-    const closeness = 1 - Math.min(place.distanceMid / radiusM, 1);
-    const rating = Number.isFinite(place.rating) ? place.rating / 5 : 0.6;
-    place.prelimScore = 0.55 * (1 - place.balanceRatio) + 0.35 * closeness + 0.1 * rating;
-  }
+      return {
+        ...place,
+        distances,
+        distanceMid,
+        maxDistance,
+        minDistance,
+        balanceM,
+        balanceRatio,
+        prelimScore: 0.5 * (1 - balanceRatio) + 0.35 * closeness + 0.15 * rating,
+      };
+    })
+    .filter((place) => place.distanceMid <= radiusM);
 
   prepared.sort(
     (first, second) =>
@@ -28,39 +34,40 @@ export function preRank(places, { midpoint, a, b, radiusM, limit = 8 }) {
 }
 
 export function attachTravel(places, rows) {
-  const rowA = rows?.[0]?.elements || [];
-  const rowB = rows?.[1]?.elements || [];
-
   return places.map((place, index) => {
-    const legA = rowA[index];
-    const legB = rowB[index];
-    const travelA =
-      legA?.status === 'OK' &&
-      Number.isFinite(legA.distanceMeters) &&
-      Number.isFinite(legA.durationSeconds)
-        ? { distanceMeters: legA.distanceMeters, durationSeconds: legA.durationSeconds }
-        : null;
-    const travelB =
-      legB?.status === 'OK' &&
-      Number.isFinite(legB.distanceMeters) &&
-      Number.isFinite(legB.durationSeconds)
-        ? { distanceMeters: legB.distanceMeters, durationSeconds: legB.durationSeconds }
-        : null;
-    const hasTravel = Boolean(travelA && travelB);
+    const travels = rows.map((row) => {
+      const leg = row?.elements?.[index];
+      if (
+        leg?.status !== 'OK' ||
+        !Number.isFinite(leg.distanceMeters) ||
+        !Number.isFinite(leg.durationSeconds)
+      ) {
+        return null;
+      }
+      return {
+        distanceMeters: leg.distanceMeters,
+        durationSeconds: leg.durationSeconds,
+      };
+    });
+
+    const hasTravel = travels.length > 0 && travels.every(Boolean);
+    const durations = travels.filter(Boolean).map((leg) => leg.durationSeconds);
+    const maxDuration = hasTravel ? Math.max(...durations) : null;
+    const minDuration = hasTravel ? Math.min(...durations) : null;
+    const totalDuration = hasTravel
+      ? durations.reduce((total, duration) => total + duration, 0)
+      : null;
+
     return {
       ...place,
-      travelA,
-      travelB,
+      travels,
       hasTravel,
-      balanceSeconds: hasTravel
-        ? Math.abs(travelA.durationSeconds - travelB.durationSeconds)
-        : null,
+      maxDuration,
+      minDuration,
+      totalDuration,
+      balanceSeconds: hasTravel ? maxDuration - minDuration : null,
     };
   });
-}
-
-function earliest(first, second) {
-  return first - second;
 }
 
 export function sortResults(places, mode) {
@@ -74,26 +81,24 @@ export function sortResults(places, mode) {
   if (mode === 'total') {
     sorted.sort((first, second) => {
       if (first.hasTravel && second.hasTravel) {
-        const totalFirst = first.travelA.durationSeconds + first.travelB.durationSeconds;
-        const totalSecond = second.travelA.durationSeconds + second.travelB.durationSeconds;
-        return earliest(totalFirst, totalSecond) || first.distanceMid - second.distanceMid;
+        return (
+          first.totalDuration - second.totalDuration ||
+          first.distanceMid - second.distanceMid
+        );
       }
       if (first.hasTravel !== second.hasTravel) return first.hasTravel ? -1 : 1;
-      return (
-        first.distanceA + first.distanceB - (second.distanceA + second.distanceB) ||
-        first.distanceMid - second.distanceMid
-      );
+      const totalFirst = first.distances.reduce((total, distance) => total + distance, 0);
+      const totalSecond = second.distances.reduce((total, distance) => total + distance, 0);
+      return totalFirst - totalSecond || first.distanceMid - second.distanceMid;
     });
     return sorted;
   }
 
   sorted.sort((first, second) => {
     if (first.hasTravel && second.hasTravel) {
-      const maxFirst = Math.max(first.travelA.durationSeconds, first.travelB.durationSeconds);
-      const maxSecond = Math.max(second.travelA.durationSeconds, second.travelB.durationSeconds);
       return (
-        earliest(first.balanceSeconds, second.balanceSeconds) ||
-        earliest(maxFirst, maxSecond) ||
+        first.balanceSeconds - second.balanceSeconds ||
+        first.maxDuration - second.maxDuration ||
         first.distanceMid - second.distanceMid
       );
     }
@@ -106,20 +111,19 @@ export function sortResults(places, mode) {
 export function fairness(place) {
   if (place.hasTravel) {
     const diff = place.balanceSeconds;
-    const farthest = Math.max(
-      place.travelA.durationSeconds,
-      place.travelB.durationSeconds,
-      1,
-    );
+    const farthest = Math.max(place.maxDuration, 1);
     if (diff <= Math.max(120, farthest * 0.15)) {
       return { label: 'Cân bằng', tone: 'good' };
     }
-    return { label: `Lệch ${formatDuration(diff)}`, tone: 'warn' };
+    return {
+      label: `Chênh ${formatDuration(diff)}`,
+      tone: diff <= farthest * 0.35 ? 'warn' : 'far',
+    };
   }
 
-  const farthest = Math.max(place.distanceA, place.distanceB, 1);
+  const farthest = Math.max(place.maxDistance, 1);
   if (place.balanceM <= Math.max(300, farthest * 0.15)) {
     return { label: 'Cân bằng', tone: 'good' };
   }
-  return { label: `Lệch ${formatDistance(place.balanceM)}`, tone: 'warn' };
+  return { label: `Chênh ${formatDistance(place.balanceM)}`, tone: 'warn' };
 }

@@ -134,7 +134,7 @@ export function createApp() {
   });
 
   api.get('/places/matrix', rateLimit(goongLimiter), async (req, res) => {
-    const origins = coordinateList(req.query.origins, { name: 'origins', min: 1, max: 2 });
+    const origins = coordinateList(req.query.origins, { name: 'origins', min: 1, max: 6 });
     const destinations = coordinateList(req.query.destinations, {
       name: 'destinations',
       min: 1,

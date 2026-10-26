@@ -6,20 +6,28 @@ import {
   formatRating,
   formatReviews,
 } from './format.js';
-import { midpoint, zoomForRadius } from './geo.js';
+import { centroid, zoomForRadius } from './geo.js';
 import { MapView } from './map.js';
 import { decodePolyline } from './polyline.js';
 import { attachTravel, fairness, preRank, sortResults } from './ranking.js';
 
+const MAX_PEOPLE = 6;
+const PERSON_COLORS = {
+  A: '#0f766e',
+  B: '#b45309',
+  C: '#4338ca',
+  D: '#be123c',
+  E: '#4d7c0f',
+  F: '#7e22ce',
+};
+const LOCATE_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"></path></svg>';
+const REMOVE_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
+
 const form = document.querySelector('#search-form');
-const inputA = document.querySelector('#location-a');
-const inputB = document.querySelector('#location-b');
-const suggestionsA = document.querySelector('#suggestions-a');
-const suggestionsB = document.querySelector('#suggestions-b');
-const statusA = document.querySelector('#status-a');
-const statusB = document.querySelector('#status-b');
-const fieldA = document.querySelector('.location-field[data-side="a"]');
-const fieldB = document.querySelector('.location-field[data-side="b"]');
+const peopleList = document.querySelector('#people-list');
+const addPersonButton = document.querySelector('#add-person');
 const keywordInput = document.querySelector('#keyword');
 const chipList = document.querySelector('#keyword-chips');
 const radiusInput = document.querySelector('#radius');
@@ -33,29 +41,12 @@ const sortTrigger = document.querySelector('#sort-trigger');
 const sortValue = document.querySelector('#sort-value');
 const sortMenu = document.querySelector('#sort-menu');
 const sortOptions = [...sortMenu.querySelectorAll('.sort-option')];
-const swapButton = document.querySelector('#swap-btn');
 const mapOverlay = document.querySelector('#map-overlay');
 const mapOverlayText = document.querySelector('#map-overlay-text');
 const mapRetry = document.querySelector('#map-retry');
 
-const sides = {
-  a: {
-    input: inputA,
-    field: fieldA,
-    status: statusA,
-    suggestions: suggestionsA,
-  },
-  b: {
-    input: inputB,
-    field: fieldB,
-    status: statusB,
-    suggestions: suggestionsB,
-  },
-};
-
 const state = {
-  a: { label: '', placeId: null, coords: null },
-  b: { label: '', placeId: null, coords: null },
+  people: [],
   keyword: 'quán ăn',
   radiusKm: 3,
   midpoint: null,
@@ -89,36 +80,31 @@ function showMapError() {
   mapRetry.hidden = false;
 }
 
-function clearStatus(side) {
-  const { field, status } = sides[side];
-  field.classList.remove('is-invalid');
-  status.replaceChildren();
+function clearStatus(person) {
+  person.field.classList.remove('is-invalid');
+  person.status.replaceChildren();
 }
 
-function setFieldLoading(side, message = 'Đang xác định vị trí…') {
-  const { field, status } = sides[side];
-  field.classList.remove('is-invalid');
+function setFieldLoading(person, message = 'Đang xác định vị trí…') {
+  person.field.classList.remove('is-invalid');
   const spinner = document.createElement('span');
   spinner.className = 'spinner';
-  status.replaceChildren(spinner, document.createTextNode(message));
+  person.status.replaceChildren(spinner, document.createTextNode(message));
 }
 
-function setFieldError(side, message, retry) {
-  const { field, status } = sides[side];
-  field.classList.add('is-invalid');
-  const textNode = document.createTextNode(`${message} `);
+function setFieldError(person, message, retry) {
+  person.field.classList.add('is-invalid');
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'inline-retry';
   button.textContent = 'Thử lại';
   button.addEventListener('click', retry);
-  status.replaceChildren(textNode, button);
+  person.status.replaceChildren(document.createTextNode(`${message} `), button);
 }
 
-function setFieldHint(side, message) {
-  const { field, status } = sides[side];
-  field.classList.add('is-invalid');
-  status.replaceChildren(document.createTextNode(message));
+function setFieldHint(person, message) {
+  person.field.classList.add('is-invalid');
+  person.status.replaceChildren(document.createTextNode(message));
 }
 
 function updateSearchButton() {
@@ -190,32 +176,44 @@ function setLoading(loading) {
   searchButton.disabled = loading;
   searchButton.classList.toggle('is-loading', loading);
   sortTrigger.disabled = loading;
+
   if (loading) {
     closeSortMenu();
     searchLabel.textContent = 'Đang tìm…';
-    resultsSummary.textContent = 'Đang tìm quán quanh điểm giữa…';
+    resultsSummary.textContent = 'Đang tìm quán quanh điểm chung…';
     renderSkeletons();
   } else {
     updateSearchButton();
   }
 }
 
-function syncEndpoints({ fit = false } = {}) {
-  const a = state.a.coords;
-  const b = state.b.coords;
-  const mid = a && b ? midpoint(a, b) : null;
-  state.midpoint = mid;
+function updateAddButton() {
+  addPersonButton.hidden = state.people.length >= MAX_PEOPLE;
+}
 
+function syncEndpoints({ fit = false } = {}) {
+  const located = state.people
+    .filter((person) => person.coords)
+    .map((person) => ({
+      id: person.id,
+      label: person.label,
+      color: person.color,
+      coords: person.coords,
+    }));
+  const allLocated =
+    state.people.length >= 2 && state.people.every((person) => person.coords);
+  const center = allLocated
+    ? centroid(state.people.map((person) => person.coords))
+    : null;
+
+  state.midpoint = center;
   mapView.setEndpoints({
-    a,
-    b,
-    midpoint: mid,
-    radiusM: mid ? state.radiusKm * 1000 : null,
+    people: located,
+    midpoint: center,
+    radiusM: center ? state.radiusKm * 1000 : null,
   });
 
-  if (fit && a && b) {
-    mapView.fitSearch();
-  }
+  if (fit && allLocated) mapView.fitSearch();
 }
 
 function cancelActiveSearch() {
@@ -243,86 +241,179 @@ function clearResults() {
   updateSearchButton();
 }
 
-function handleLocationEdit(side) {
-  state[side] = { label: sides[side].input.value, placeId: null, coords: null };
-  clearStatus(side);
-  syncEndpoints();
-  clearResults();
-}
-
-async function loadDetail(side) {
-  const target = state[side];
-  const id = target.placeId;
-  if (!id) return;
-
-  setFieldLoading(side);
-
-  try {
-    const data = await getJson('/api/places/detail', { placeId: id });
-    if (state[side].placeId !== id) return;
-    state[side].coords = { lat: data.place.lat, lng: data.place.lng };
-    state[side].label = data.place.address || data.place.name || target.label;
-    clearStatus(side);
-    syncEndpoints({ fit: true });
-    updateSearchButton();
-  } catch {
-    if (state[side].placeId !== id) return;
-    setFieldError(side, 'Thử lại', () => loadDetail(side));
-  }
-}
-
-function handlePrediction(side, prediction) {
-  state[side] = {
-    label: prediction.description,
-    placeId: prediction.placeId,
-    coords: null,
-  };
-  clearStatus(side);
+function handleLocationEdit(person) {
+  person.labelText = person.input.value;
+  person.placeId = null;
+  person.coords = null;
+  clearStatus(person);
   syncEndpoints();
   clearResults();
   updateSearchButton();
-  loadDetail(side);
 }
 
-function setupAutocomplete(side) {
+async function loadDetail(person) {
+  const id = person.placeId;
+  if (!id) return;
+
+  setFieldLoading(person);
+
+  try {
+    const data = await getJson('/api/places/detail', { placeId: id });
+    if (person.placeId !== id) return;
+    person.coords = { lat: data.place.lat, lng: data.place.lng };
+    person.labelText = data.place.address || data.place.name || person.labelText;
+    clearStatus(person);
+    syncEndpoints({ fit: true });
+    updateSearchButton();
+  } catch {
+    if (person.placeId !== id) return;
+    setFieldError(person, 'Thử lại', () => loadDetail(person));
+  }
+}
+
+function handlePrediction(person, prediction) {
+  person.labelText = prediction.description;
+  person.placeId = prediction.placeId;
+  person.coords = null;
+  clearStatus(person);
+  syncEndpoints();
+  clearResults();
+  updateSearchButton();
+  loadDetail(person);
+}
+
+function nextLabel() {
+  const used = new Set(state.people.map((person) => person.label));
+  return ['A', 'B', 'C', 'D', 'E', 'F'].find((label) => !used.has(label)) || null;
+}
+
+function createPerson(label) {
+  const id = label.toLowerCase();
+  const person = {
+    id,
+    label,
+    color: PERSON_COLORS[label],
+    placeId: null,
+    coords: null,
+    labelText: '',
+    input: null,
+    list: null,
+    status: null,
+    field: null,
+    row: null,
+  };
+  const removable = label !== 'A' && label !== 'B';
+
+  const row = document.createElement('div');
+  row.className = `location-field${removable ? ' has-remove' : ''}`;
+  row.dataset.side = id;
+  row.innerHTML = `
+    <span class="pin" style="background:${person.color}" aria-hidden="true">${label}</span>
+    <div class="location-main">
+      <label for="location-${id}">Người ${label}</label>
+      <div class="input-shell">
+        <input
+          id="location-${id}"
+          class="location-input"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Nhập địa chỉ hoặc tên nơi..."
+          aria-autocomplete="list"
+          aria-controls="suggestions-${id}"
+          aria-expanded="false"
+        />
+        <div class="suggestions" id="suggestions-${id}" role="listbox" hidden></div>
+      </div>
+      <div class="field-status" id="status-${id}" aria-live="polite"></div>
+    </div>
+    <button
+      type="button"
+      class="icon-btn locate-btn"
+      data-locate="${id}"
+      aria-label="Dùng vị trí hiện tại cho người ${label}"
+      title="Vị trí của tôi"
+    >${LOCATE_ICON}</button>
+    ${
+      removable
+        ? `<button type="button" class="remove-person" data-remove="${id}" aria-label="Xoá người ${label}" title="Xoá">${REMOVE_ICON}</button>`
+        : ''
+    }
+  `;
+
+  peopleList.append(row);
+  person.row = row;
+  person.input = row.querySelector('.location-input');
+  person.list = row.querySelector('.suggestions');
+  person.status = row.querySelector('.field-status');
+  person.field = row;
+  state.people.push(person);
+
+  row.querySelector('[data-locate]')?.addEventListener('click', () => activateLocation(person));
+  row.querySelector('[data-remove]')?.addEventListener('click', () => removePerson(person));
+
   createAutocomplete({
-    input: sides[side].input,
-    list: sides[side].suggestions,
-    onSelect: (prediction) => handlePrediction(side, prediction),
-    onDirty: () => handleLocationEdit(side),
+    input: person.input,
+    list: person.list,
+    onSelect: (prediction) => handlePrediction(person, prediction),
+    onDirty: () => handleLocationEdit(person),
   });
+
+  updateAddButton();
+  return person;
 }
 
-async function resolveInput(side, signal) {
-  if (state[side].coords) return state[side];
+function addPerson() {
+  const label = nextLabel();
+  if (!label) return;
+  const person = createPerson(label);
+  syncEndpoints();
+  clearResults();
+  updateSearchButton();
+  person.input.focus();
+  person.row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
 
-  if (state[side].placeId) {
-    setFieldLoading(side);
+function removePerson(person) {
+  if (state.people.length <= 2 || person.label === 'A' || person.label === 'B') return;
+  person.row.remove();
+  state.people = state.people.filter((candidate) => candidate !== person);
+  syncEndpoints();
+  clearResults();
+  updateAddButton();
+  updateSearchButton();
+}
+
+async function resolveInput(person, signal) {
+  if (person.coords) return person;
+
+  if (person.placeId) {
+    setFieldLoading(person);
     try {
       const data = await getJson(
         '/api/places/detail',
-        { placeId: state[side].placeId },
+        { placeId: person.placeId },
         signal,
       );
-      state[side].coords = { lat: data.place.lat, lng: data.place.lng };
-      state[side].label = data.place.address || data.place.name || state[side].label;
-      clearStatus(side);
+      person.coords = { lat: data.place.lat, lng: data.place.lng };
+      person.labelText = data.place.address || data.place.name || person.labelText;
+      clearStatus(person);
       syncEndpoints({ fit: true });
-      return state[side];
+      return person;
     } catch (error) {
       if (error.name === 'AbortError') throw error;
-      setFieldError(side, 'Thử lại', () => resolveInput(side));
+      setFieldError(person, 'Thử lại', () => resolveInput(person));
       throw error;
     }
   }
 
-  const query = sides[side].input.value.trim();
+  const query = person.input.value.trim();
   if (!query) {
-    setFieldHint(side, 'Chọn một địa chỉ');
+    setFieldHint(person, `Chọn địa chỉ cho người ${person.label}`);
     throw new Error('MISSING_LOCATION');
   }
 
-  setFieldLoading(side, 'Đang xác định địa chỉ…');
+  setFieldLoading(person, 'Đang xác định địa chỉ…');
   try {
     const data = await getJson(
       '/api/places/autocomplete',
@@ -331,55 +422,51 @@ async function resolveInput(side, signal) {
     );
     const first = data.predictions?.[0];
     if (!first) {
-      setFieldError(side, 'Thử lại', () => resolveInput(side));
+      setFieldError(person, 'Thử lại', () => resolveInput(person));
       throw new Error('LOCATION_NOT_FOUND');
     }
 
-    state[side] = {
-      label: first.description,
-      placeId: first.placeId,
-      coords: null,
-    };
-    sides[side].input.value = first.description;
+    person.labelText = first.description;
+    person.placeId = first.placeId;
+    person.coords = null;
+    person.input.value = first.description;
 
     const detail = await getJson(
       '/api/places/detail',
       { placeId: first.placeId },
       signal,
     );
-    state[side].coords = { lat: detail.place.lat, lng: detail.place.lng };
-    state[side].label = detail.place.address || first.description;
-    clearStatus(side);
+    person.coords = { lat: detail.place.lat, lng: detail.place.lng };
+    person.labelText = detail.place.address || first.description;
+    clearStatus(person);
     syncEndpoints({ fit: true });
-    return state[side];
+    return person;
   } catch (error) {
     if (error.name === 'AbortError' || error.message === 'LOCATION_NOT_FOUND') {
       throw error;
     }
-    setFieldError(side, 'Thử lại', () => resolveInput(side));
+    setFieldError(person, 'Thử lại', () => resolveInput(person));
     throw error;
   }
 }
 
-function activateLocation(side) {
-  const button = document.querySelector(`[data-locate="${side}"]`);
+function activateLocation(person) {
   if (!navigator.geolocation) return;
-
+  const button = person.row.querySelector('[data-locate]');
+  if (!button) return;
   button.classList.add('is-loading');
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
       button.classList.remove('is-loading');
-      state[side] = {
-        label: 'Vị trí hiện tại',
-        placeId: null,
-        coords: {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        },
+      person.placeId = null;
+      person.coords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
       };
-      sides[side].input.value = 'Vị trí hiện tại';
-      clearStatus(side);
+      person.labelText = 'Vị trí hiện tại';
+      person.input.value = 'Vị trí hiện tại';
+      clearStatus(person);
       syncEndpoints({ fit: true });
       clearResults();
       updateSearchButton();
@@ -392,14 +479,14 @@ function activateLocation(side) {
 }
 
 function renderIntro() {
-  resultsSummary.textContent = 'Nhập A và B để bắt đầu';
+  resultsSummary.textContent = 'Nhập vị trí của nhóm để bắt đầu';
   const card = document.createElement('div');
   card.className = 'intro-card';
   const title = document.createElement('h3');
-  title.textContent = 'Chọn điểm hẹn cho hai người';
+  title.textContent = 'Chọn điểm hẹn cho nhóm';
   const description = document.createElement('p');
   description.textContent =
-    'Nhập địa chỉ của A và B, chọn món bạn muốn ăn. Ứng dụng sẽ tìm quán ở khoảng giữa và cân thời gian đi lại cho cả hai.';
+    'Nhập vị trí của ít nhất hai người. Ứng dụng sẽ tìm quán ở khoảng giữa và cân thời gian đi lại cho cả nhóm.';
   card.append(title, description);
   resultsList.replaceChildren(card);
 }
@@ -457,7 +544,6 @@ function renderEmpty() {
   card.className = 'state-card';
   const message = document.createElement('p');
   message.textContent = 'Chưa có quán phù hợp trong bán kính này.';
-
   card.append(message);
 
   if (state.radiusKm < 10) {
@@ -571,34 +657,33 @@ function createCard(place, index) {
 
   card.append(top);
 
-  if (place.hasTravel) {
-    const travel = document.createElement('div');
-    travel.className = 'travel-grid';
-
-    for (const [side, label, leg] of [
-      ['a', 'A', place.travelA],
-      ['b', 'B', place.travelB],
-    ]) {
-      const item = document.createElement('div');
-      item.className = 'travel-item';
-      const dot = document.createElement('span');
-      dot.className = `dot dot-${side}`;
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'travel-name';
-      nameSpan.textContent = label;
-      const value = document.createElement('span');
-      value.className = 'travel-value';
+  const travel = document.createElement('div');
+  travel.className = 'travel-grid';
+  state.people.forEach((person, personIndex) => {
+    const item = document.createElement('div');
+    item.className = 'travel-item';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = person.color;
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'travel-name';
+    nameSpan.textContent = person.label;
+    const value = document.createElement('span');
+    value.className = 'travel-value';
+    if (place.hasTravel) {
+      const leg = place.travels[personIndex];
       value.textContent = `${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}`;
-      item.append(dot, nameSpan, value);
-      travel.append(item);
+    } else {
+      value.textContent = formatDistance(place.distances[personIndex]);
     }
-
-    card.append(travel);
-  }
+    item.append(dot, nameSpan, value);
+    travel.append(item);
+  });
+  card.append(travel);
 
   const midpointLine = document.createElement('p');
   midpointLine.className = 'midpoint-line';
-  midpointLine.textContent = `Cách điểm giữa ${formatDistance(place.distanceMid)}`;
+  midpointLine.textContent = `Cách điểm ${state.people.length > 2 ? 'chung' : 'giữa'} ${formatDistance(place.distanceMid)}`;
   card.append(midpointLine);
 
   const actions = document.createElement('div');
@@ -634,7 +719,7 @@ function renderResults() {
     return;
   }
 
-  resultsSummary.textContent = `${state.results.length} gợi ý trong ${formatDistance(state.radiusKm * 1000)}`;
+  resultsSummary.textContent = `${state.results.length} gợi ý trong ${formatDistance(state.radiusKm * 1000)} · ${state.people.length} người`;
   const fragment = document.createDocumentFragment();
   state.results.forEach((place, index) => fragment.append(createCard(place, index)));
   resultsList.replaceChildren(fragment);
@@ -681,9 +766,7 @@ async function getRoute(origin, destination, signal) {
 
 async function drawRoutes(index) {
   const place = state.results[index];
-  const a = state.a.coords;
-  const b = state.b.coords;
-  if (!place || !a || !b) return;
+  if (!place) return;
 
   routeAbort?.abort();
   const controller = new AbortController();
@@ -697,15 +780,24 @@ async function drawRoutes(index) {
   }
 
   try {
-    const routeA = await getRoute(a, place, controller.signal);
-    if (token !== routeSeq) return;
-    const routeB = await getRoute(b, place, controller.signal);
-    if (token !== routeSeq) return;
-
-    mapView.drawRoutes({
-      a: routeA?.polyline ? decodePolyline(routeA.polyline) : [],
-      b: routeB?.polyline ? decodePolyline(routeB.polyline) : [],
-    });
+    const routes = [];
+    for (const person of state.people) {
+      if (!person.coords) continue;
+      let route = null;
+      try {
+        route = await getRoute(person.coords, place, controller.signal);
+      } catch (error) {
+        if (error.name === 'AbortError') throw error;
+      }
+      if (token !== routeSeq) return;
+      if (route?.polyline) {
+        routes.push({
+          color: person.color,
+          coordinates: decodePolyline(route.polyline),
+        });
+      }
+    }
+    mapView.drawRoutes(routes);
   } catch (error) {
     if (error.name !== 'AbortError' && token === routeSeq) {
       mapView.clearRoutes();
@@ -740,22 +832,26 @@ async function runSearch() {
   mapView.clearRoutes();
 
   try {
-    const a = await resolveInput('a', controller.signal);
-    if (seq !== state.seq) return;
-    const b = await resolveInput('b', controller.signal);
-    if (seq !== state.seq) return;
+    for (const person of state.people) {
+      await resolveInput(person, controller.signal);
+      if (seq !== state.seq) return;
+    }
 
-    const mid = midpoint(a.coords, b.coords);
+    const center = centroid(state.people.map((person) => person.coords));
     const radiusM = state.radiusKm * 1000;
     const keyword = keywordInput.value.trim() || 'quán ăn';
 
     state.keyword = keyword;
-    state.midpoint = mid;
+    state.midpoint = center;
     syncEndpoints();
     mapView.setEndpoints({
-      a: a.coords,
-      b: b.coords,
-      midpoint: mid,
+      people: state.people.map((person) => ({
+        id: person.id,
+        label: person.label,
+        color: person.color,
+        coords: person.coords,
+      })),
+      midpoint: center,
       radiusM,
     });
 
@@ -763,16 +859,15 @@ async function runSearch() {
       '/api/discover',
       {
         q: keyword,
-        ll: `@${mid.lat.toFixed(6)},${mid.lng.toFixed(6)},${zoomForRadius(state.radiusKm)}z`,
+        ll: `@${center.lat.toFixed(6)},${center.lng.toFixed(6)},${zoomForRadius(state.radiusKm)}z`,
       },
       controller.signal,
     );
     if (seq !== state.seq) return;
 
     const prepared = preRank(discover.places || [], {
-      midpoint: mid,
-      a: a.coords,
-      b: b.coords,
+      midpoint: center,
+      people: state.people.map((person) => person.coords),
       radiusM,
       limit: 8,
     });
@@ -793,7 +888,9 @@ async function runSearch() {
       const matrix = await getJson(
         '/api/places/matrix',
         {
-          origins: `${a.coords.lat},${a.coords.lng}|${b.coords.lat},${b.coords.lng}`,
+          origins: state.people
+            .map((person) => `${person.coords.lat},${person.coords.lng}`)
+            .join('|'),
           destinations: prepared.map((place) => `${place.lat},${place.lng}`).join('|'),
           vehicle: 'car',
         },
@@ -816,8 +913,8 @@ async function runSearch() {
     if (error.name === 'AbortError' || seq !== state.seq) return;
     if (error.message === 'MISSING_LOCATION') {
       restoreResults();
-      const firstEmpty = !state.a.coords ? inputA : !state.b.coords ? inputB : null;
-      firstEmpty?.focus();
+      const missing = state.people.find((person) => !person.coords);
+      missing?.input.focus();
       return;
     }
     renderSearchError();
@@ -831,14 +928,17 @@ async function runSearch() {
 
 function initialize() {
   renderIntro();
-  setupAutocomplete('a');
-  setupAutocomplete('b');
+  createPerson('A');
+  createPerson('B');
+  updateAddButton();
   updateChips();
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     runSearch();
   });
+
+  addPersonButton.addEventListener('click', addPerson);
 
   for (const chip of chipList.querySelectorAll('.chip')) {
     chip.addEventListener('click', () => {
@@ -904,26 +1004,6 @@ function initialize() {
       closeSortMenu({ focusTrigger: true });
     }
   });
-
-  swapButton.addEventListener('click', () => {
-    const previousA = state.a;
-    state.a = state.b;
-    state.b = previousA;
-
-    const valueA = inputA.value;
-    inputA.value = inputB.value;
-    inputB.value = valueA;
-
-    clearStatus('a');
-    clearStatus('b');
-    syncEndpoints({ fit: true });
-    clearResults();
-    updateSearchButton();
-  });
-
-  for (const button of document.querySelectorAll('[data-locate]')) {
-    button.addEventListener('click', () => activateLocation(button.dataset.locate));
-  }
 
   mapRetry.addEventListener('click', () => window.location.reload());
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  centroid,
   circlePolygon,
   haversine,
   midpoint,
@@ -16,6 +17,16 @@ test('midpoint nằm giữa hai điểm đối xứng', () => {
   const center = midpoint({ lat: 0, lng: 0 }, { lat: 0, lng: 2 });
   assert.ok(Math.abs(center.lat) < 1e-9);
   assert.ok(Math.abs(center.lng - 1) < 1e-9);
+});
+
+test('centroid nằm giữa một nhóm điểm', () => {
+  const center = centroid([
+    { lat: 0, lng: 0 },
+    { lat: 0, lng: 2 },
+    { lat: 0, lng: 4 },
+  ]);
+  assert.ok(Math.abs(center.lat) < 1e-9);
+  assert.ok(Math.abs(center.lng - 2) < 1e-9);
 });
 
 test('circlePolygon tạo vòng tròn khép kín đúng bán kính', () => {

@@ -12,11 +12,16 @@ function pinElement(className, text, label) {
   return element;
 }
 
-function lineFeature(coordinates) {
+function routeFeatures(routes) {
   return {
-    type: 'Feature',
-    properties: {},
-    geometry: { type: 'LineString', coordinates },
+    type: 'FeatureCollection',
+    features: routes
+      .filter((route) => route.coordinates?.length >= 2)
+      .map((route) => ({
+        type: 'Feature',
+        properties: { color: route.color },
+        geometry: { type: 'LineString', coordinates: route.coordinates },
+      })),
   };
 }
 
@@ -30,7 +35,8 @@ export class MapView {
     this.ready = false;
     this.endpoints = null;
     this.results = [];
-    this.endpointMarkers = { a: null, b: null, mid: null };
+    this.personMarkers = [];
+    this.midMarker = null;
     this.resultMarkers = [];
     this.selected = null;
   }
@@ -97,27 +103,25 @@ export class MapView {
       },
     });
 
-    for (const side of ['a', 'b']) {
-      this.map.addSource(`route-${side}`, { type: 'geojson', data: EMPTY });
-      this.map.addLayer({
-        id: `route-${side}-casing`,
-        type: 'line',
-        source: `route-${side}`,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#fffdf9', 'line-width': 8, 'line-opacity': 0.95 },
-      });
-      this.map.addLayer({
-        id: `route-${side}`,
-        type: 'line',
-        source: `route-${side}`,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': side === 'a' ? '#0f766e' : '#b45309',
-          'line-width': 4.5,
-          'line-opacity': 0.95,
-        },
-      });
-    }
+    this.map.addSource('person-routes', { type: 'geojson', data: EMPTY });
+    this.map.addLayer({
+      id: 'person-routes-casing',
+      type: 'line',
+      source: 'person-routes',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#fffdf9', 'line-width': 8, 'line-opacity': 0.95 },
+    });
+    this.map.addLayer({
+      id: 'person-routes',
+      type: 'line',
+      source: 'person-routes',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 4,
+        'line-opacity': 0.95,
+      },
+    });
   }
 
   setEndpoints(endpoints) {
@@ -126,34 +130,27 @@ export class MapView {
   }
 
   applyEndpoints() {
-    const { a, b, midpoint, radiusM } = this.endpoints || {};
+    const { people = [], midpoint, radiusM } = this.endpoints || {};
 
-    for (const side of ['a', 'b', 'mid']) {
-      this.endpointMarkers[side]?.remove();
-      this.endpointMarkers[side] = null;
-    }
+    for (const marker of this.personMarkers) marker.remove();
+    this.personMarkers = [];
+    this.midMarker?.remove();
+    this.midMarker = null;
 
-    if (a) {
-      this.endpointMarkers.a = new maplibregl.Marker({
-        element: pinElement('map-pin pin-a', 'A', 'Người A'),
-      })
-        .setLngLat([a.lng, a.lat])
+    for (const person of people) {
+      const element = pinElement('map-pin', person.label, `Người ${person.label}`);
+      element.style.background = person.color;
+      const marker = new maplibregl.Marker({ element })
+        .setLngLat([person.coords.lng, person.coords.lat])
         .addTo(this.map);
-    }
-
-    if (b) {
-      this.endpointMarkers.b = new maplibregl.Marker({
-        element: pinElement('map-pin pin-b', 'B', 'Người B'),
-      })
-        .setLngLat([b.lng, b.lat])
-        .addTo(this.map);
+      this.personMarkers.push(marker);
     }
 
     if (midpoint) {
       const element = document.createElement('div');
       element.className = 'map-mid';
       element.setAttribute('aria-hidden', 'true');
-      this.endpointMarkers.mid = new maplibregl.Marker({ element })
+      this.midMarker = new maplibregl.Marker({ element })
         .setLngLat([midpoint.lng, midpoint.lat])
         .addTo(this.map);
       this.map.getSource('search-radius')?.setData(circlePolygon(midpoint, radiusM));
@@ -173,7 +170,11 @@ export class MapView {
     this.resultMarkers = [];
 
     this.results.forEach((place, index) => {
-      const element = pinElement('map-result', String(index + 1), `Gợi ý ${index + 1}: ${place.name}`);
+      const element = pinElement(
+        'map-result',
+        String(index + 1),
+        `Gợi ý ${index + 1}: ${place.name}`,
+      );
       element.tabIndex = 0;
       element.setAttribute('role', 'button');
       element.addEventListener('click', () => this.onMarkerClick?.(index));
@@ -199,20 +200,19 @@ export class MapView {
   }
 
   clearRoutes() {
-    this.map?.getSource('route-a')?.setData(EMPTY);
-    this.map?.getSource('route-b')?.setData(EMPTY);
+    this.map?.getSource('person-routes')?.setData(EMPTY);
   }
 
   drawRoutes(routes) {
     if (!this.ready) return;
-    const routeA = routes.a?.length >= 2 ? lineFeature(routes.a) : EMPTY;
-    const routeB = routes.b?.length >= 2 ? lineFeature(routes.b) : EMPTY;
-    this.map.getSource('route-a')?.setData(routeA);
-    this.map.getSource('route-b')?.setData(routeB);
 
-    const coordinates = [...(routes.a || []), ...(routes.b || [])];
-    if (this.endpoints?.a) coordinates.push([this.endpoints.a.lng, this.endpoints.a.lat]);
-    if (this.endpoints?.b) coordinates.push([this.endpoints.b.lng, this.endpoints.b.lat]);
+    const valid = routes.filter((route) => route.coordinates?.length >= 2);
+    this.map.getSource('person-routes')?.setData(routeFeatures(valid));
+
+    const coordinates = valid.flatMap((route) => route.coordinates);
+    for (const person of this.endpoints?.people || []) {
+      coordinates.push([person.coords.lng, person.coords.lat]);
+    }
     if (coordinates.length === 0) return;
 
     const bounds = coordinates.reduce(
@@ -224,9 +224,11 @@ export class MapView {
 
   fitSearch() {
     if (!this.ready) return;
+
     const points = [];
-    if (this.endpoints?.a) points.push([this.endpoints.a.lng, this.endpoints.a.lat]);
-    if (this.endpoints?.b) points.push([this.endpoints.b.lng, this.endpoints.b.lat]);
+    for (const person of this.endpoints?.people || []) {
+      points.push([person.coords.lng, person.coords.lat]);
+    }
     for (const place of this.results) points.push([place.lng, place.lat]);
     if (points.length === 0) return;
 

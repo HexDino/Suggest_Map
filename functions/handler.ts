@@ -151,7 +151,7 @@ export async function handle(request) {
       const origins = coordinateList(url.searchParams.get('origins'), {
         name: 'origins',
         min: 1,
-        max: 2,
+        max: 6,
       });
       const destinations = coordinateList(url.searchParams.get('destinations'), {
         name: 'destinations',

@@ -8,8 +8,12 @@ import {
 } from '../public/js/ranking.js';
 
 const midpoint = { lat: 0, lng: 0 };
-const a = { lat: -0.01, lng: 0 };
-const b = { lat: 0.01, lng: 0 };
+const people = [
+  { lat: -0.01, lng: 0 },
+  { lat: 0.01, lng: 0 },
+  { lat: 0, lng: -0.01 },
+  { lat: 0, lng: 0.01 },
+];
 
 function place(overrides = {}) {
   return {
@@ -22,21 +26,21 @@ function place(overrides = {}) {
   };
 }
 
-test('preRank lọc theo bán kính và xếp theo điểm sơ bộ', () => {
+test('preRank lọc theo bán kính và tính khoảng cách cho cả nhóm', () => {
   const near = place({ name: 'Gần', lng: 0.001 });
   const far = place({ name: 'Xa', lng: 0.2 });
   const results = preRank([near, far], {
     midpoint,
-    a,
-    b,
+    people,
     radiusM: 3_000,
     limit: 8,
   });
 
   assert.equal(results.length, 1);
   assert.equal(results[0].name, 'Gần');
+  assert.equal(results[0].distances.length, 4);
   assert.ok(results[0].distanceMid > 0);
-  assert.ok('prelimScore' in results[0]);
+  assert.ok(results[0].balanceM >= 0);
 });
 
 test('preRank tôn trọng giới hạn kết quả', () => {
@@ -45,26 +49,37 @@ test('preRank tôn trọng giới hạn kết quả', () => {
   );
   const results = preRank(places, {
     midpoint,
-    a,
-    b,
+    people,
     radiusM: 5_000,
     limit: 6,
   });
   assert.equal(results.length, 6);
 });
 
-test('attachTravel ghép quãng đường và thời gian cho hai người', () => {
+test('attachTravel ghép quãng đường và thời gian cho nhiều người', () => {
   const places = [place({ name: 'Một' }), place({ name: 'Hai' })];
   const rows = [
     {
       elements: [
         { status: 'OK', distanceMeters: 1_000, durationSeconds: 300 },
-        { status: 'OK', distanceMeters: 1_200, durationSeconds: 360 },
+        { status: 'OK', distanceMeters: 1_200, durationSeconds: 300 },
       ],
     },
     {
       elements: [
         { status: 'OK', distanceMeters: 1_100, durationSeconds: 330 },
+        { status: 'OK', distanceMeters: 1_200, durationSeconds: 360 },
+      ],
+    },
+    {
+      elements: [
+        { status: 'OK', distanceMeters: 900, durationSeconds: 300 },
+        { status: 'OK', distanceMeters: 1_300, durationSeconds: 300 },
+      ],
+    },
+    {
+      elements: [
+        { status: 'OK', distanceMeters: 1_500, durationSeconds: 360 },
         { status: 'ZERO_RESULTS', distanceMeters: null, durationSeconds: null },
       ],
     },
@@ -72,9 +87,12 @@ test('attachTravel ghép quãng đường và thời gian cho hai người', () 
 
   const [first, second] = attachTravel(places, rows);
   assert.equal(first.hasTravel, true);
-  assert.equal(first.balanceSeconds, 30);
+  assert.equal(first.travels.length, 4);
+  assert.equal(first.balanceSeconds, 60);
+  assert.equal(first.maxDuration, 360);
+  assert.equal(first.totalDuration, 1_290);
   assert.equal(second.hasTravel, false);
-  assert.equal(second.travelB, null);
+  assert.equal(second.travels[3], null);
 });
 
 test('sortResults cân bằng xếp trước, rồi tổng thời gian', () => {
@@ -91,8 +109,22 @@ test('sortResults cân bằng xếp trước, rồi tổng thời gian', () => {
       {
         elements: [
           { status: 'OK', distanceMeters: 1_000, durationSeconds: 600 },
-          { status: 'OK', distanceMeters: 1_000, durationSeconds: 330 },
-          { status: 'OK', distanceMeters: 1_200, durationSeconds: 400 },
+          { status: 'OK', distanceMeters: 1_000, durationSeconds: 300 },
+          { status: 'OK', distanceMeters: 1_200, durationSeconds: 250 },
+        ],
+      },
+      {
+        elements: [
+          { status: 'OK', distanceMeters: 1_000, durationSeconds: 300 },
+          { status: 'OK', distanceMeters: 1_000, durationSeconds: 300 },
+          { status: 'OK', distanceMeters: 900, durationSeconds: 200 },
+        ],
+      },
+      {
+        elements: [
+          { status: 'OK', distanceMeters: 1_000, durationSeconds: 600 },
+          { status: 'OK', distanceMeters: 1_000, durationSeconds: 300 },
+          { status: 'OK', distanceMeters: 1_200, durationSeconds: 250 },
         ],
       },
     ],
@@ -102,20 +134,27 @@ test('sortResults cân bằng xếp trước, rồi tổng thời gian', () => {
   assert.equal(sortResults(places, 'total')[0].name, 'Nhanh');
 });
 
-test('fairness trả nhãn cân bằng hoặc lệch', () => {
+test('fairness trả nhãn cân bằng hoặc chênh lệch', () => {
   const balanced = {
     hasTravel: true,
-    travelA: { durationSeconds: 300 },
-    travelB: { durationSeconds: 360 },
+    maxDuration: 360,
     balanceSeconds: 60,
   };
   const uneven = {
     hasTravel: true,
-    travelA: { durationSeconds: 300 },
-    travelB: { durationSeconds: 600 },
+    maxDuration: 600,
     balanceSeconds: 300,
   };
 
   assert.equal(fairness(balanced).tone, 'good');
-  assert.match(fairness(uneven).label, /Lệch/);
+  assert.match(fairness(uneven).label, /Chênh/);
+});
+
+test('fairness dùng khoảng cách khi chưa có dữ liệu chỉ đường', () => {
+  const placeWithoutTravel = {
+    hasTravel: false,
+    maxDistance: 1_300,
+    balanceM: 100,
+  };
+  assert.equal(fairness(placeWithoutTravel).tone, 'good');
 });

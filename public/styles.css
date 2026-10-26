@@ -8,10 +8,6 @@
   --accent: #c8512f;
   --accent-dark: #a53e22;
   --accent-soft: #f8e7df;
-  --a: #0f766e;
-  --a-soft: #e2f1ee;
-  --b: #b45309;
-  --b-soft: #fbeddc;
   --good: #1e6b4f;
   --good-soft: #e6f2ec;
   --warn: #95601c;
@@ -133,11 +129,21 @@ svg {
   gap: 18px;
 }
 
+.locations {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .location-field {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) 38px;
   gap: 10px;
   align-items: start;
+}
+
+.location-field.has-remove {
+  grid-template-columns: 30px minmax(0, 1fr) 38px 30px;
 }
 
 .pin {
@@ -150,14 +156,6 @@ svg {
   color: #fff;
   font-size: 12px;
   font-weight: 600;
-}
-
-.pin-a {
-  background: var(--a);
-}
-
-.pin-b {
-  background: var(--b);
 }
 
 .location-main {
@@ -319,37 +317,57 @@ label {
   height: 17px;
 }
 
-.location-divider {
+.add-person {
   display: flex;
+  gap: 6px;
   align-items: center;
-  gap: 10px;
-  padding-left: 40px;
+  justify-content: center;
+  min-height: 40px;
+  margin-top: -8px;
+  padding: 0 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
-.location-divider > span {
-  flex: 1;
-  height: 1px;
-  background: var(--line);
+.add-person:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
 }
 
-.swap-btn {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  padding: 4px 6px;
+.add-person svg {
+  width: 15px;
+  height: 15px;
+}
+
+.remove-person {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-top: 23px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
   cursor: pointer;
 }
 
-.swap-btn:hover {
+.remove-person:hover {
+  background: var(--accent-soft);
   color: var(--accent-dark);
 }
 
-.swap-btn svg {
+.remove-person svg {
   width: 14px;
   height: 14px;
 }
@@ -823,7 +841,7 @@ input[type='range'] {
 
 .travel-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   margin-top: 10px;
 }
@@ -844,14 +862,6 @@ input[type='range'] {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-}
-
-.dot-a {
-  background: var(--a);
-}
-
-.dot-b {
-  background: var(--b);
 }
 
 .travel-name {
@@ -1057,14 +1067,6 @@ input[type='range'] {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
 }
 
-.map-pin.pin-a {
-  background: var(--a);
-}
-
-.map-pin.pin-b {
-  background: var(--b);
-}
-
 .map-result {
   display: grid;
   place-items: center;
@@ -1155,10 +1157,6 @@ input[type='range'] {
 
   .sort-trigger {
     padding: 0 8px;
-  }
-
-  .travel-grid {
-    grid-template-columns: 1fr;
   }
 
   .result-top {

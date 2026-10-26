@@ -38,6 +38,28 @@ export function midpoint(a, b) {
   };
 }
 
+export function centroid(points) {
+  if (!Array.isArray(points) || points.length === 0) return null;
+
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const point of points) {
+    const lat = toRadians(point.lat);
+    const lng = toRadians(point.lng);
+    x += Math.cos(lat) * Math.cos(lng);
+    y += Math.cos(lat) * Math.sin(lng);
+    z += Math.sin(lat);
+  }
+
+  const lng = Math.atan2(y, x);
+  const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+  return {
+    lat: toDegrees(lat),
+    lng: ((toDegrees(lng) + 540) % 360) - 180,
+  };
+}
+
 export function destination(center, bearingDegrees, distanceMeters) {
   const angular = distanceMeters / EARTH_RADIUS;
   const bearing = toRadians(bearingDegrees);
