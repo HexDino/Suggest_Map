@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Điểm Hẹn — Tìm quán ở giữa hai người</title>
+    <meta
+      name="description"
+      content="Tìm quán ăn ở khoảng giữa hai người, cân bằng quãng đường và thời gian di chuyển."
+    />
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    <link href="/styles.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="panel">
+        <header class="brand">
+          <img class="brand-mark" src="/logo.svg" alt="" width="42" height="42" />
+          <div class="brand-copy">
+            <h1>Điểm Hẹn</h1>
+          </div>
+        </header>
+
+        <form id="search-form" novalidate>
+          <div class="locations">
+            <div class="location-field" data-side="a">
+              <span class="pin pin-a" aria-hidden="true">A</span>
+              <div class="location-main">
+                <label for="location-a">Người A</label>
+                <div class="input-shell">
+                  <input
+                    id="location-a"
+                    class="location-input"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Nhập địa chỉ hoặc tên nơi..."
+                    aria-autocomplete="list"
+                    aria-controls="suggestions-a"
+                    aria-expanded="false"
+                  />
+                  <div class="suggestions" id="suggestions-a" role="listbox" hidden></div>
+                </div>
+                <div class="field-status" id="status-a" aria-live="polite"></div>
+              </div>
+              <button
+                type="button"
+                class="icon-btn locate-btn"
+                data-locate="a"
+                aria-label="Dùng vị trí hiện tại cho người A"
+                title="Vị trí của tôi"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3.2"></circle>
+                  <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div class="location-divider">
+              <span></span>
+              <button
+                type="button"
+                id="swap-btn"
+                class="swap-btn"
+                aria-label="Đổi chỗ người A và B"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 7h10l-3-3M17 17H7l3 3"></path>
+                </svg>
+                <span>Đổi</span>
+              </button>
+              <span></span>
+            </div>
+
+            <div class="location-field" data-side="b">
+              <span class="pin pin-b" aria-hidden="true">B</span>
+              <div class="location-main">
+                <label for="location-b">Người B</label>
+                <div class="input-shell">
+                  <input
+                    id="location-b"
+                    class="location-input"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Nhập địa chỉ hoặc tên nơi..."
+                    aria-autocomplete="list"
+                    aria-controls="suggestions-b"
+                    aria-expanded="false"
+                  />
+                  <div class="suggestions" id="suggestions-b" role="listbox" hidden></div>
+                </div>
+                <div class="field-status" id="status-b" aria-live="polite"></div>
+              </div>
+              <button
+                type="button"
+                class="icon-btn locate-btn"
+                data-locate="b"
+                aria-label="Dùng vị trí hiện tại cho người B"
+                title="Vị trí của tôi"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3.2"></circle>
+                  <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="keyword">Bạn muốn ăn gì?</label>
+            <div class="keyword-wrap">
+              <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m20 20-4-4"></path>
+              </svg>
+              <input
+                id="keyword"
+                type="text"
+                value="quán ăn"
+                maxlength="80"
+                autocomplete="off"
+                placeholder="quán ăn, cà phê, phở..."
+              />
+            </div>
+            <div class="chips" id="keyword-chips" aria-label="Gợi ý từ khóa">
+              <button type="button" class="chip is-active" data-keyword="quán ăn">Quán ăn</button>
+              <button type="button" class="chip" data-keyword="cà phê">Cà phê</button>
+              <button type="button" class="chip" data-keyword="nhà hàng">Nhà hàng</button>
+              <button type="button" class="chip" data-keyword="ăn vặt">Ăn vặt</button>
+              <button type="button" class="chip" data-keyword="quán nhậu">Quán nhậu</button>
+              <button type="button" class="chip" data-keyword="chay">Chay</button>
+            </div>
+          </div>
+
+          <div class="field radius-field">
+            <div class="radius-head">
+              <label for="radius">Bán kính quanh điểm hẹn</label>
+              <output id="radius-value" for="radius">3 km</output>
+            </div>
+            <input id="radius" type="range" min="1" max="10" step="1" value="3" />
+            <div class="radius-scale" aria-hidden="true">
+              <span>1 km</span>
+              <span>10 km</span>
+            </div>
+          </div>
+
+          <button type="submit" id="search-btn" class="primary-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-4-4"></path>
+            </svg>
+            <span>Tìm điểm hẹn</span>
+          </button>
+        </form>
+
+        <section class="results" aria-labelledby="results-title">
+          <div class="results-head">
+            <div>
+              <h2 id="results-title">Gợi ý</h2>
+              <p id="results-summary" aria-live="polite"></p>
+            </div>
+            <div class="sort-control" id="sort-control">
+              <span class="sr-only" id="sort-label">Sắp xếp kết quả</span>
+              <button
+                type="button"
+                class="sort-trigger"
+                id="sort-trigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-labelledby="sort-label sort-value"
+              >
+                <span id="sort-value">Cân bằng nhất</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+              <div class="sort-menu" id="sort-menu" role="listbox" aria-labelledby="sort-label" hidden>
+                <button
+                  type="button"
+                  class="sort-option is-selected"
+                  role="option"
+                  data-value="balance"
+                  aria-selected="true"
+                >
+                  <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                  <span>Cân bằng nhất</span>
+                </button>
+                <button
+                  type="button"
+                  class="sort-option"
+                  role="option"
+                  data-value="midpoint"
+                  aria-selected="false"
+                >
+                  <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                  <span>Gần điểm giữa</span>
+                </button>
+                <button
+                  type="button"
+                  class="sort-option"
+                  role="option"
+                  data-value="total"
+                  aria-selected="false"
+                >
+                  <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                  <span>Tổng thời gian thấp nhất</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="results-list" class="results-list"></div>
+        </section>
+
+        <footer class="panel-foot">Dữ liệu địa điểm từ Google · Bản đồ Goong</footer>
+      </aside>
+
+      <main class="map-wrap">
+        <div id="map" aria-label="Bản đồ các địa điểm"></div>
+        <div class="map-overlay" id="map-overlay">
+          <div class="overlay-card">
+            <p id="map-overlay-text">Đang tải bản đồ…</p>
+            <button type="button" id="map-retry" class="overlay-retry" hidden>Thử lại</button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>
