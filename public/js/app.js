@@ -480,7 +480,7 @@ function activateLocation(person) {
 }
 
 function renderIntro() {
-  resultsSummary.textContent = 'Nhập vị trí của nhóm để bắt đầu';
+  resultsSummary.textContent = '';
   const card = document.createElement('div');
   card.className = 'intro-card';
   const title = document.createElement('h3');

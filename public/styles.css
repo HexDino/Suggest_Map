@@ -565,6 +565,10 @@ input[type='range'] {
   font-size: 11.5px;
 }
 
+#results-summary:empty {
+  display: none;
+}
+
 .sort-control {
   position: relative;
   flex: 0 0 auto;
