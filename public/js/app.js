@@ -8,6 +8,7 @@ import {
 } from './format.js';
 import { centroid, zoomForRadius } from './geo.js';
 import { MapView } from './map.js';
+import { chooseMeetingPoint, generateMeetingCandidates } from './meeting.js';
 import { decodePolyline } from './polyline.js';
 import { attachTravel, fairness, preRank, sortResults } from './ranking.js';
 
@@ -837,9 +838,37 @@ async function runSearch() {
       if (seq !== state.seq) return;
     }
 
-    const center = centroid(state.people.map((person) => person.coords));
+    const peopleCoords = state.people.map((person) => person.coords);
     const radiusM = state.radiusKm * 1000;
     const keyword = keywordInput.value.trim() || 'quán ăn';
+    let center = centroid(peopleCoords);
+
+    const candidates = generateMeetingCandidates({
+      people: peopleCoords,
+      radiusM,
+    });
+    if (candidates.length > 1) {
+      try {
+        const meetingMatrix = await getJson(
+          '/api/places/matrix',
+          {
+            origins: peopleCoords
+              .map((coord) => `${coord.lat},${coord.lng}`)
+              .join('|'),
+            destinations: candidates
+              .map((coord) => `${coord.lat},${coord.lng}`)
+              .join('|'),
+            vehicle: 'car',
+          },
+          controller.signal,
+        );
+        if (seq !== state.seq) return;
+        const meeting = chooseMeetingPoint(candidates, meetingMatrix.rows);
+        if (meeting) center = { lat: meeting.lat, lng: meeting.lng };
+      } catch (error) {
+        if (error.name === 'AbortError') throw error;
+      }
+    }
 
     state.keyword = keyword;
     state.midpoint = center;
@@ -867,7 +896,7 @@ async function runSearch() {
 
     const prepared = preRank(discover.places || [], {
       midpoint: center,
-      people: state.people.map((person) => person.coords),
+      people: peopleCoords,
       radiusM,
       limit: 8,
     });
@@ -888,8 +917,8 @@ async function runSearch() {
       const matrix = await getJson(
         '/api/places/matrix',
         {
-          origins: state.people
-            .map((person) => `${person.coords.lat},${person.coords.lng}`)
+          origins: peopleCoords
+            .map((coord) => `${coord.lat},${coord.lng}`)
             .join('|'),
           destinations: prepared.map((place) => `${place.lat},${place.lng}`).join('|'),
           vehicle: 'car',
