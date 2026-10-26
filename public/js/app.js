@@ -980,18 +980,9 @@ function setupMobileSheet() {
   let dragging = false;
   let startY = 0;
   let startHeight = 0;
-  let frame = null;
 
   const mapHeight = () => document.querySelector('.map-wrap').getBoundingClientRect().height;
   const maxMapHeight = () => Math.max(MIN_MAP, window.innerHeight - PANEL_BAR);
-
-  function scheduleResize() {
-    if (frame !== null) return;
-    frame = requestAnimationFrame(() => {
-      frame = null;
-      mapView.resize();
-    });
-  }
 
   function updateHandleAria() {
     sheetHandle.setAttribute('aria-valuemin', String(MIN_MAP));
@@ -1003,7 +994,6 @@ function setupMobileSheet() {
     const value = Math.min(maxMapHeight(), Math.max(MIN_MAP, height));
     appElement.style.setProperty('--map-height', `${value}px`);
     sheetHandle.setAttribute('aria-valuenow', String(Math.round(value)));
-    scheduleResize();
   }
 
   function snapHeight() {
@@ -1033,6 +1023,7 @@ function setupMobileSheet() {
     setMapHeight(startHeight + event.clientY - startY);
   });
 
+  // Resize WebGL once on release; doing it on every move makes the map flicker.
   const endDrag = (event) => {
     if (!dragging) return;
     dragging = false;
@@ -1050,23 +1041,25 @@ function setupMobileSheet() {
 
   sheetHandle.addEventListener('keydown', (event) => {
     if (!mobileQuery.matches) return;
+    let changed = true;
     if (event.key === 'ArrowUp') {
-      event.preventDefault();
       setMapHeight(mapHeight() - 40);
     } else if (event.key === 'ArrowDown') {
-      event.preventDefault();
       setMapHeight(mapHeight() + 40);
     } else if (event.key === 'Home') {
-      event.preventDefault();
       setMapHeight(MIN_MAP);
     } else if (event.key === 'End') {
-      event.preventDefault();
       setMapHeight(maxMapHeight());
     } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
       setMapHeight(
         mapHeight() > window.innerHeight * 0.6 ? window.innerHeight * 0.4 : maxMapHeight(),
       );
+    } else {
+      changed = false;
+    }
+    if (changed) {
+      event.preventDefault();
+      mapView.resize();
     }
   });
 
@@ -1093,7 +1086,7 @@ function setupMobileSheet() {
     } else {
       updateHandleAria();
     }
-    scheduleResize();
+    mapView.resize();
   });
 
   updateHandleAria();

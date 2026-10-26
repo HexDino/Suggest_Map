@@ -50,6 +50,7 @@ export class MapView {
       center: [center.lng, center.lat],
       zoom,
       attributionControl: false,
+      trackResize: false,
     });
 
     this.map.on('styleimagemissing', (event) => {

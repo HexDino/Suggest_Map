@@ -1012,6 +1012,12 @@ input[type='range'] {
   inset: 0;
 }
 
+#map .maplibregl-canvas-container,
+#map .maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 .map-overlay {
   position: absolute;
   inset: 0;
