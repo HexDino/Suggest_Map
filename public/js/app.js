@@ -45,6 +45,8 @@ const sortOptions = [...sortMenu.querySelectorAll('.sort-option')];
 const mapOverlay = document.querySelector('#map-overlay');
 const mapOverlayText = document.querySelector('#map-overlay-text');
 const mapRetry = document.querySelector('#map-retry');
+const appElement = document.querySelector('.app');
+const sheetHandle = document.querySelector('#sheet-handle');
 
 const state = {
   people: [],
@@ -518,8 +520,22 @@ function renderSkeletons() {
   resultsList.replaceChildren(fragment);
 }
 
+function prepareResultsLayout() {
+  if (!window.matchMedia('(max-width: 860px)').matches) return;
+
+  const mapWrap = document.querySelector('.map-wrap');
+  const currentHeight = mapWrap.getBoundingClientRect().height;
+  if (currentHeight < window.innerHeight * 0.3) {
+    const target = Math.round(window.innerHeight * 0.4);
+    appElement.style.setProperty('--map-height', `${target}px`);
+    sheetHandle.setAttribute('aria-valuenow', String(target));
+    mapView.resize();
+  }
+}
+
 function scrollToResultsOnMobile() {
   if (!window.matchMedia('(max-width: 860px)').matches) return;
+  prepareResultsLayout();
   document.querySelector('.results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -904,6 +920,7 @@ async function runSearch() {
     if (prepared.length === 0) {
       state.results = [];
       state.searched = true;
+      prepareResultsLayout();
       renderResults();
       mapView.setResults([]);
       mapView.fitSearch();
@@ -934,6 +951,7 @@ async function runSearch() {
     state.results = sortResults(results, state.sort);
     state.selectedIndex = null;
     state.searched = true;
+    prepareResultsLayout();
     renderResults();
     mapView.setResults(state.results);
     mapView.fitSearch();
@@ -955,12 +973,139 @@ async function runSearch() {
   }
 }
 
+function setupMobileSheet() {
+  const mobileQuery = window.matchMedia('(max-width: 860px)');
+  const MIN_MAP = 72;
+  const PANEL_BAR = 56;
+  let dragging = false;
+  let startY = 0;
+  let startHeight = 0;
+  let frame = null;
+
+  const mapHeight = () => document.querySelector('.map-wrap').getBoundingClientRect().height;
+  const maxMapHeight = () => Math.max(MIN_MAP, window.innerHeight - PANEL_BAR);
+
+  function scheduleResize() {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      mapView.resize();
+    });
+  }
+
+  function updateHandleAria() {
+    sheetHandle.setAttribute('aria-valuemin', String(MIN_MAP));
+    sheetHandle.setAttribute('aria-valuemax', String(Math.round(maxMapHeight())));
+    sheetHandle.setAttribute('aria-valuenow', String(Math.round(mapHeight())));
+  }
+
+  function setMapHeight(height) {
+    const value = Math.min(maxMapHeight(), Math.max(MIN_MAP, height));
+    appElement.style.setProperty('--map-height', `${value}px`);
+    sheetHandle.setAttribute('aria-valuenow', String(Math.round(value)));
+    scheduleResize();
+  }
+
+  function snapHeight() {
+    const current = mapHeight();
+    const points = [MIN_MAP, window.innerHeight * 0.4, maxMapHeight()];
+    const nearest = points.reduce((best, point) =>
+      Math.abs(point - current) < Math.abs(best - current) ? point : best,
+    );
+    setMapHeight(nearest);
+  }
+
+  sheetHandle.addEventListener('pointerdown', (event) => {
+    if (!mobileQuery.matches) return;
+    dragging = true;
+    startY = event.clientY;
+    startHeight = mapHeight();
+    sheetHandle.classList.add('is-dragging');
+    document.body.classList.add('is-resizing');
+    try {
+      sheetHandle.setPointerCapture(event.pointerId);
+    } catch {}
+    event.preventDefault();
+  });
+
+  sheetHandle.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    setMapHeight(startHeight + event.clientY - startY);
+  });
+
+  const endDrag = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    sheetHandle.classList.remove('is-dragging');
+    document.body.classList.remove('is-resizing');
+    try {
+      sheetHandle.releasePointerCapture(event.pointerId);
+    } catch {}
+    snapHeight();
+    mapView.resize();
+  };
+
+  sheetHandle.addEventListener('pointerup', endDrag);
+  sheetHandle.addEventListener('pointercancel', endDrag);
+
+  sheetHandle.addEventListener('keydown', (event) => {
+    if (!mobileQuery.matches) return;
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setMapHeight(mapHeight() - 40);
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setMapHeight(mapHeight() + 40);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setMapHeight(MIN_MAP);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setMapHeight(maxMapHeight());
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setMapHeight(
+        mapHeight() > window.innerHeight * 0.6 ? window.innerHeight * 0.4 : maxMapHeight(),
+      );
+    }
+  });
+
+  document.addEventListener('focusin', (event) => {
+    if (!mobileQuery.matches) return;
+    if (!event.target.matches('.location-input, #keyword')) return;
+    if (mapHeight() > MIN_MAP + 2) {
+      setMapHeight(MIN_MAP);
+      mapView.resize();
+      setTimeout(() => {
+        event.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 140);
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (!mobileQuery.matches) {
+      appElement.style.removeProperty('--map-height');
+      updateHandleAria();
+      return;
+    }
+    if (appElement.style.getPropertyValue('--map-height')) {
+      setMapHeight(mapHeight());
+    } else {
+      updateHandleAria();
+    }
+    scheduleResize();
+  });
+
+  updateHandleAria();
+}
+
 function initialize() {
   renderIntro();
   createPerson('A');
   createPerson('B');
   updateAddButton();
   updateChips();
+  setupMobileSheet();
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();

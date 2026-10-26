@@ -124,6 +124,10 @@ export class MapView {
     });
   }
 
+  resize() {
+    this.map?.resize();
+  }
+
   setEndpoints(endpoints) {
     this.endpoints = endpoints;
     if (this.ready) this.applyEndpoints();
@@ -219,7 +223,12 @@ export class MapView {
       (accumulator, coordinate) => accumulator.extend(coordinate),
       new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
     );
-    this.map.fitBounds(bounds, { padding: 56, maxZoom: 15.5, duration: 650 });
+    const canvas = this.map.getCanvas();
+    const padding = Math.max(
+      12,
+      Math.min(56, Math.floor(Math.min(canvas.clientWidth, canvas.clientHeight) * 0.18)),
+    );
+    this.map.fitBounds(bounds, { padding, maxZoom: 15.5, duration: 650 });
   }
 
   fitSearch() {
@@ -242,6 +251,11 @@ export class MapView {
       for (const coordinate of circle.geometry.coordinates[0]) bounds.extend(coordinate);
     }
 
-    this.map.fitBounds(bounds, { padding: 48, maxZoom: 15.2, duration: 700 });
+    const canvas = this.map.getCanvas();
+    const padding = Math.max(
+      12,
+      Math.min(48, Math.floor(Math.min(canvas.clientWidth, canvas.clientHeight) * 0.15)),
+    );
+    this.map.fitBounds(bounds, { padding, maxZoom: 15.2, duration: 700 });
   }
 }
