@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TtlCache } from '../server/cache.js';
+import { TtlCache } from '../functions/cache.js';
 
 test('TtlCache hết hạn theo thời gian', () => {
   let now = 0;

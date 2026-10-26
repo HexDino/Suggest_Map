@@ -1,13 +1,10 @@
 import { fetchJson, UpstreamError } from './upstream.js';
 
-function base() {
-  return process.env.SERPAPI_BASE_URL || 'https://serpapi.com';
-}
+const DEFAULT_BASE = 'https://serpapi.com';
 
-function apiKey() {
-  const key = process.env.SERPAPI_KEY;
-  if (!key) throw new UpstreamError('SerpApi key is missing', { code: 'CONFIG_MISSING' });
-  return key;
+function requireKey(apiKey) {
+  if (!apiKey) throw new UpstreamError('SerpApi key is missing', { code: 'CONFIG_MISSING' });
+  return apiKey;
 }
 
 function numberOrNull(value) {
@@ -24,17 +21,22 @@ function httpsUrl(value) {
   }
 }
 
-export async function discover({ q, ll }) {
+export async function discover({
+  q,
+  ll,
+  apiKey,
+  baseUrl = DEFAULT_BASE,
+}) {
   const params = new URLSearchParams({
     engine: 'google_maps',
     q,
     ll,
     hl: 'vi',
     gl: 'vn',
-    api_key: apiKey(),
+    api_key: requireKey(apiKey),
   });
 
-  const data = await fetchJson(`${base()}/search.json?${params}`, { timeoutMs: 30_000 });
+  const data = await fetchJson(`${baseUrl}/search.json?${params}`, { timeoutMs: 30_000 });
   if (data.search_metadata?.status && data.search_metadata.status !== 'Success') {
     throw new UpstreamError('Google Maps search failed', { code: 'UPSTREAM_ERROR' });
   }

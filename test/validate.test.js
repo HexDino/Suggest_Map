@@ -10,7 +10,7 @@ import {
   text,
   vehicle,
   ValidationError,
-} from '../server/validate.js';
+} from '../functions/validate.js';
 
 test('coordinate chấp nhận lat,lng hợp lệ', () => {
   assert.deepEqual(coordinate('21.03,105.85'), { lat: 21.03, lng: 105.85 });

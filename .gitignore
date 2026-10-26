@@ -4,6 +4,7 @@ node_modules/
 .playwright-mcp/
 test-results/
 screenshots/
+*.qoder.site
 *.log
 .DS_Store
 Thumbs.db

@@ -7,8 +7,15 @@ export class ApiError extends Error {
   }
 }
 
+const API_BASE = '/functions/v1/app';
+
+function apiPath(path) {
+  const suffix = path.startsWith('/api') ? path.slice(4) : path;
+  return `${API_BASE}${suffix || '/'}`;
+}
+
 export async function getJson(path, params = {}, signal) {
-  const url = new URL(path, window.location.origin);
+  const url = new URL(apiPath(path), window.location.origin);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, String(value));
@@ -19,6 +26,7 @@ export async function getJson(path, params = {}, signal) {
   try {
     response = await fetch(url, {
       signal,
+      credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
   } catch (error) {

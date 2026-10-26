@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SerialQueue } from '../server/queue.js';
-import { SlidingWindowLimiter } from '../server/rate-limit.js';
+import { SerialQueue } from '../functions/queue.js';
+import { SlidingWindowLimiter } from '../functions/rate-limit.js';
 
 test('SerialQueue giãn cách thời điểm bắt đầu các tác vụ', async () => {
   let now = 0;

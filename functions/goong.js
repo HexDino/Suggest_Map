@@ -1,30 +1,35 @@
 import { fetchJson, UpstreamError } from './upstream.js';
 
-function base() {
-  return process.env.GOONG_BASE_URL || 'https://rsapi.goong.io';
-}
+const DEFAULT_BASE = 'https://rsapi.goong.io';
 
-function apiKey() {
-  const key = process.env.GOONG_REST_KEY;
-  if (!key) throw new UpstreamError('Goong key is missing', { code: 'CONFIG_MISSING' });
-  return key;
+function requireKey(apiKey) {
+  if (!apiKey) throw new UpstreamError('Goong key is missing', { code: 'CONFIG_MISSING' });
+  return apiKey;
 }
 
 function coord(value) {
   return `${value.lat},${value.lng}`;
 }
 
-export async function autocomplete({ input, location, origin, radius, limit = 5 }) {
+export async function autocomplete({
+  input,
+  location,
+  origin,
+  radius,
+  limit = 5,
+  apiKey,
+  baseUrl = DEFAULT_BASE,
+}) {
   const params = new URLSearchParams({
     input,
     limit: String(limit),
-    api_key: apiKey(),
+    api_key: requireKey(apiKey),
   });
   if (location) params.set('location', coord(location));
   if (origin) params.set('origin', coord(origin));
   if (radius !== null && radius !== undefined) params.set('radius', String(radius));
 
-  const data = await fetchJson(`${base()}/v2/place/autocomplete?${params}`);
+  const data = await fetchJson(`${baseUrl}/v2/place/autocomplete?${params}`);
   return {
     predictions: (data.predictions || []).map((item) => ({
       placeId: item.place_id,
@@ -36,9 +41,12 @@ export async function autocomplete({ input, location, origin, radius, limit = 5 
   };
 }
 
-export async function detail(placeId) {
-  const params = new URLSearchParams({ place_id: placeId, api_key: apiKey() });
-  const data = await fetchJson(`${base()}/v2/place/detail?${params}`);
+export async function detail({ placeId, apiKey, baseUrl = DEFAULT_BASE }) {
+  const params = new URLSearchParams({
+    place_id: placeId,
+    api_key: requireKey(apiKey),
+  });
+  const data = await fetchJson(`${baseUrl}/v2/place/detail?${params}`);
   const result = data.result;
   const lat = result?.geometry?.location?.lat;
   const lng = result?.geometry?.location?.lng;
@@ -58,14 +66,20 @@ export async function detail(placeId) {
   };
 }
 
-export async function matrix({ origins, destinations, vehicle = 'car' }) {
+export async function matrix({
+  origins,
+  destinations,
+  vehicle = 'car',
+  apiKey,
+  baseUrl = DEFAULT_BASE,
+}) {
   const params = new URLSearchParams({
     origins: origins.map(coord).join('|'),
     destinations: destinations.map(coord).join('|'),
     vehicle,
-    api_key: apiKey(),
+    api_key: requireKey(apiKey),
   });
-  const data = await fetchJson(`${base()}/v2/distancematrix?${params}`);
+  const data = await fetchJson(`${baseUrl}/v2/distancematrix?${params}`);
   return {
     rows: (data.rows || []).map((row) => ({
       elements: (row.elements || []).map((element) => ({
@@ -77,14 +91,20 @@ export async function matrix({ origins, destinations, vehicle = 'car' }) {
   };
 }
 
-export async function directions({ origin, destination, vehicle = 'car' }) {
+export async function directions({
+  origin,
+  destination,
+  vehicle = 'car',
+  apiKey,
+  baseUrl = DEFAULT_BASE,
+}) {
   const params = new URLSearchParams({
     origin: coord(origin),
     destination: coord(destination),
     vehicle,
-    api_key: apiKey(),
+    api_key: requireKey(apiKey),
   });
-  const data = await fetchJson(`${base()}/v2/direction?${params}`);
+  const data = await fetchJson(`${baseUrl}/v2/direction?${params}`);
   const route = data.routes?.[0];
   if (!route) {
     throw new UpstreamError('Route was not found', { status: 404, code: 'ROUTE_NOT_FOUND' });
