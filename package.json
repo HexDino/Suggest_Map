@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Tìm quán ăn ở giữa hai người",
+  "description": "Tìm điểm hẹn ăn uống cho nhóm 2–6 người",
   "scripts": {
     "start": "node --env-file=.env server/index.js",
     "dev": "node --watch --env-file=.env server/index.js",

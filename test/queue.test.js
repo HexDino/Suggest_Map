@@ -49,3 +49,20 @@ test('SlidingWindowLimiter chặn khi vượt ngưỡng và mở lại sau cửa
   now = 1_001;
   assert.equal(limiter.take('ip'), true);
 });
+
+test('SlidingWindowLimiter giới hạn số key lưu trong bộ nhớ', () => {
+  let now = 0;
+  const limiter = new SlidingWindowLimiter({
+    windowMs: 1_000,
+    max: 1,
+    maxKeys: 2,
+    now: () => now,
+  });
+
+  limiter.take('a');
+  limiter.take('b');
+  limiter.take('c');
+
+  assert.equal(limiter.hits.size, 2);
+  assert.equal(limiter.hits.has('a'), false);
+});

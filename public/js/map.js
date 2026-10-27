@@ -129,6 +129,34 @@ export class MapView {
     this.map?.resize();
   }
 
+  fitPoints(people) {
+    if (!this.ready || !people?.length) return;
+
+    const coordinates = people.map((person) => [
+      person.coords.lng,
+      person.coords.lat,
+    ]);
+    if (coordinates.length === 1) {
+      this.map.easeTo({
+        center: coordinates[0],
+        zoom: Math.max(this.map.getZoom(), 14),
+        duration: 650,
+      });
+      return;
+    }
+
+    const bounds = coordinates.reduce(
+      (accumulator, coordinate) => accumulator.extend(coordinate),
+      new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
+    );
+    const canvas = this.map.getCanvas();
+    const padding = Math.max(
+      16,
+      Math.min(48, Math.floor(Math.min(canvas.clientWidth, canvas.clientHeight) * 0.15)),
+    );
+    this.map.fitBounds(bounds, { padding, maxZoom: 15.5, duration: 700 });
+  }
+
   setEndpoints(endpoints) {
     this.endpoints = endpoints;
     if (this.ready) this.applyEndpoints();

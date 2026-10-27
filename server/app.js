@@ -25,7 +25,7 @@ const serpCache = new TtlCache({ maxEntries: 200 });
 const goongQueue = new SerialQueue({ minIntervalMs: 300 });
 const serpQueue = new SerialQueue({ minIntervalMs: 1_000 });
 const goongLimiter = new SlidingWindowLimiter({ windowMs: 60_000, max: 120 });
-const serpLimiter = new SlidingWindowLimiter({ windowMs: 60_000, max: 10 });
+const serpLimiter = new SlidingWindowLimiter({ windowMs: 60_000, max: 5 });
 
 const TTL = {
   autocomplete: 5 * 60_000,

@@ -1,7 +1,8 @@
 export class SlidingWindowLimiter {
-  constructor({ windowMs = 60_000, max = 60, now = Date.now } = {}) {
+  constructor({ windowMs = 60_000, max = 60, maxKeys = 5_000, now = Date.now } = {}) {
     this.windowMs = windowMs;
     this.max = max;
+    this.maxKeys = maxKeys;
     this.now = now;
     this.hits = new Map();
   }
@@ -16,6 +17,17 @@ export class SlidingWindowLimiter {
     }
     hits.push(current);
     this.hits.set(key, hits);
+
+    if (this.hits.size > this.maxKeys) {
+      for (const [otherKey, times] of this.hits) {
+        if (!times.some((time) => time > cutoff)) this.hits.delete(otherKey);
+        if (this.hits.size <= this.maxKeys) break;
+      }
+      while (this.hits.size > this.maxKeys) {
+        this.hits.delete(this.hits.keys().next().value);
+      }
+    }
+
     return true;
   }
 }

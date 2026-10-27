@@ -23,6 +23,9 @@ export function createAutocomplete({ input, list, onSelect, onDirty }) {
   }
 
   function showLoading() {
+    items = [];
+    activeIndex = -1;
+    input.removeAttribute('aria-activedescendant');
     list.replaceChildren();
     const row = document.createElement('div');
     row.className = 'suggestion-loading';
@@ -73,6 +76,7 @@ export function createAutocomplete({ input, list, onSelect, onDirty }) {
       button.className = 'suggestion';
       button.id = `${idBase}-${index}`;
       button.setAttribute('role', 'option');
+      button.tabIndex = -1;
       button.dataset.index = String(index);
 
       const main = document.createElement('span');
@@ -103,7 +107,7 @@ export function createAutocomplete({ input, list, onSelect, onDirty }) {
         { input: query, limit: 5 },
         controller.signal,
       );
-      if (input.value.trim() !== query) return;
+      if (input.value.trim() !== query || document.activeElement !== input) return;
       render(data.predictions || []);
     } catch (error) {
       if (error.name === 'AbortError') return;
@@ -142,6 +146,11 @@ export function createAutocomplete({ input, list, onSelect, onDirty }) {
   });
 
   input.addEventListener('blur', () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    controller?.abort();
     setTimeout(() => {
       if (!pointerRecentlyInside) close();
     }, 120);

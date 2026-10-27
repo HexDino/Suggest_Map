@@ -22,7 +22,7 @@ const serpCache = new TtlCache({ maxEntries: 200 });
 const goongQueue = new SerialQueue({ minIntervalMs: 300 });
 const serpQueue = new SerialQueue({ minIntervalMs: 1_000 });
 const goongLimiter = new SlidingWindowLimiter({ windowMs: 60_000, max: 120 });
-const serpLimiter = new SlidingWindowLimiter({ windowMs: 60_000, max: 10 });
+const serpLimiter = new SlidingWindowLimiter({ windowMs: 60_000, max: 5 });
 
 const TTL = {
   autocomplete: 5 * 60_000,
@@ -48,12 +48,12 @@ function keyOf(value) {
 }
 
 function clientKey(request) {
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  if (realIp) return realIp;
+
   const forwarded = request.headers.get('x-forwarded-for');
-  return (
-    forwarded?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    'anonymous'
-  );
+  const parts = forwarded?.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts?.length ? parts[parts.length - 1] : 'unknown';
 }
 
 function tooMany() {

@@ -16,7 +16,7 @@ test('geometricMedian bị kéo về phía đa số thay vì điểm xa', () => 
   assert.ok(median.lng > 0.5 && median.lng < 1.5);
 });
 
-test('generateMeetingCandidates tạo 8 điểm duy nhất', () => {
+test('generateMeetingCandidates tạo 7-8 điểm duy nhất', () => {
   const candidates = generateMeetingCandidates({
     people: [
       { lat: 0, lng: -0.01 },
@@ -25,12 +25,29 @@ test('generateMeetingCandidates tạo 8 điểm duy nhất', () => {
     radiusM: 3_000,
   });
 
-  assert.equal(candidates.length, 8);
+  assert.ok(candidates.length >= 7 && candidates.length <= 8);
   const keys = new Set(
     candidates.map((point) => `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`),
   );
   assert.equal(keys.size, candidates.length);
   assert.ok(candidates.every((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng)));
+});
+
+test('generateMeetingCandidates phủ đủ các hướng đông tây nam bắc', () => {
+  const candidates = generateMeetingCandidates({
+    people: [
+      { lat: 0, lng: 0 },
+      { lat: 0, lng: 0.01 },
+      { lat: 0.02, lng: 0 },
+    ],
+    radiusM: 5_000,
+  });
+
+  assert.equal(candidates.length, 8);
+  const lngs = candidates.map((point) => point.lng);
+  const lats = candidates.map((point) => point.lat);
+  assert.ok(Math.max(...lngs) - Math.min(...lngs) > 0.01);
+  assert.ok(Math.max(...lats) - Math.min(...lats) > 0.01);
 });
 
 test('chooseMeetingPoint chọn điểm có thời gian xa nhất nhỏ nhất', () => {

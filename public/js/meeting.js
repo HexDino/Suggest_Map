@@ -45,7 +45,7 @@ export function generateMeetingCandidates({ people, radiusM }) {
     0,
   );
   const ring = clamp(spread, 300, Math.max(radiusM * 0.7, 300));
-  const bearings = [0, 45, 90, 135, 180, 225, 270, 315];
+  const bearings = [0, 60, 120, 180, 240, 300];
 
   const candidates = [
     center,
@@ -54,14 +54,12 @@ export function generateMeetingCandidates({ people, radiusM }) {
   ];
 
   const seen = new Set();
-  return candidates
-    .filter((candidate) => {
-      const key = `${candidate.lat.toFixed(5)},${candidate.lng.toFixed(5)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 8);
+  return candidates.filter((candidate) => {
+    const key = `${candidate.lat.toFixed(5)},${candidate.lng.toFixed(5)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function chooseMeetingPoint(candidates, rows) {

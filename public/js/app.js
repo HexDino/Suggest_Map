@@ -216,7 +216,32 @@ function syncEndpoints({ fit = false } = {}) {
     radiusM: center ? state.radiusKm * 1000 : null,
   });
 
-  if (fit && allLocated) mapView.fitSearch();
+  if (fit && allLocated) {
+    mapView.fitSearch();
+  } else if (fit && located.length > 0) {
+    mapView.fitPoints(located);
+  }
+}
+
+function refreshEndpointRadius() {
+  const located = state.people
+    .filter((person) => person.coords)
+    .map((person) => ({
+      id: person.id,
+      label: person.label,
+      color: person.color,
+      coords: person.coords,
+    }));
+
+  if (state.midpoint && state.people.every((person) => person.coords)) {
+    mapView.setEndpoints({
+      people: located,
+      midpoint: state.midpoint,
+      radiusM: state.radiusKm * 1000,
+    });
+  } else {
+    syncEndpoints();
+  }
 }
 
 function cancelActiveSearch() {
@@ -244,7 +269,13 @@ function clearResults() {
   updateSearchButton();
 }
 
+function cancelLocationRequest(person) {
+  person.locationSeq += 1;
+  person.row?.querySelector('[data-locate]')?.classList.remove('is-loading');
+}
+
 function handleLocationEdit(person) {
+  cancelLocationRequest(person);
   person.labelText = person.input.value;
   person.placeId = null;
   person.coords = null;
@@ -270,11 +301,12 @@ async function loadDetail(person) {
     updateSearchButton();
   } catch {
     if (person.placeId !== id) return;
-    setFieldError(person, 'Thử lại', () => loadDetail(person));
+    setFieldError(person, 'Không tải được địa chỉ.', () => loadDetail(person));
   }
 }
 
 function handlePrediction(person, prediction) {
+  cancelLocationRequest(person);
   person.labelText = prediction.description;
   person.placeId = prediction.placeId;
   person.coords = null;
@@ -288,6 +320,11 @@ function handlePrediction(person, prediction) {
 function nextLabel() {
   const used = new Set(state.people.map((person) => person.label));
   return ['A', 'B', 'C', 'D', 'E', 'F'].find((label) => !used.has(label)) || null;
+}
+
+function sortPeople() {
+  state.people.sort((first, second) => first.label.localeCompare(second.label));
+  for (const person of state.people) peopleList.append(person.row);
 }
 
 function createPerson(label) {
@@ -304,6 +341,7 @@ function createPerson(label) {
     status: null,
     field: null,
     row: null,
+    locationSeq: 0,
   };
   const removable = label !== 'A' && label !== 'B';
 
@@ -322,7 +360,9 @@ function createPerson(label) {
           autocomplete="off"
           spellcheck="false"
           placeholder="Nhập địa chỉ hoặc tên nơi..."
+          role="combobox"
           aria-autocomplete="list"
+          aria-haspopup="listbox"
           aria-controls="suggestions-${id}"
           aria-expanded="false"
         />
@@ -370,6 +410,7 @@ function addPerson() {
   const label = nextLabel();
   if (!label) return;
   const person = createPerson(label);
+  sortPeople();
   syncEndpoints();
   clearResults();
   updateSearchButton();
@@ -379,8 +420,10 @@ function addPerson() {
 
 function removePerson(person) {
   if (state.people.length <= 2 || person.label === 'A' || person.label === 'B') return;
+  cancelLocationRequest(person);
   person.row.remove();
   state.people = state.people.filter((candidate) => candidate !== person);
+  sortPeople();
   syncEndpoints();
   clearResults();
   updateAddButton();
@@ -405,7 +448,9 @@ async function resolveInput(person, signal) {
       return person;
     } catch (error) {
       if (error.name === 'AbortError') throw error;
-      setFieldError(person, 'Thử lại', () => resolveInput(person));
+      error.isLocationError = true;
+      error.person = person;
+      setFieldError(person, 'Không tải được địa chỉ.', () => resolveInput(person));
       throw error;
     }
   }
@@ -413,7 +458,9 @@ async function resolveInput(person, signal) {
   const query = person.input.value.trim();
   if (!query) {
     setFieldHint(person, `Chọn địa chỉ cho người ${person.label}`);
-    throw new Error('MISSING_LOCATION');
+    const missing = new Error('MISSING_LOCATION');
+    missing.person = person;
+    throw missing;
   }
 
   setFieldLoading(person, 'Đang xác định địa chỉ…');
@@ -425,8 +472,11 @@ async function resolveInput(person, signal) {
     );
     const first = data.predictions?.[0];
     if (!first) {
-      setFieldError(person, 'Thử lại', () => resolveInput(person));
-      throw new Error('LOCATION_NOT_FOUND');
+      const notFound = new Error('LOCATION_NOT_FOUND');
+      notFound.isLocationError = true;
+      notFound.person = person;
+      setFieldError(person, 'Chưa tìm thấy địa chỉ.', () => resolveInput(person));
+      throw notFound;
     }
 
     person.labelText = first.description;
@@ -448,7 +498,9 @@ async function resolveInput(person, signal) {
     if (error.name === 'AbortError' || error.message === 'LOCATION_NOT_FOUND') {
       throw error;
     }
-    setFieldError(person, 'Thử lại', () => resolveInput(person));
+    error.isLocationError = true;
+    error.person = person;
+    setFieldError(person, 'Không xác định được địa chỉ.', () => resolveInput(person));
     throw error;
   }
 }
@@ -457,10 +509,12 @@ function activateLocation(person) {
   if (!navigator.geolocation) return;
   const button = person.row.querySelector('[data-locate]');
   if (!button) return;
+  const requestId = ++person.locationSeq;
   button.classList.add('is-loading');
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
+      if (person.locationSeq !== requestId) return;
       button.classList.remove('is-loading');
       person.placeId = null;
       person.coords = {
@@ -475,7 +529,7 @@ function activateLocation(person) {
       updateSearchButton();
     },
     () => {
-      button.classList.remove('is-loading');
+      if (person.locationSeq === requestId) button.classList.remove('is-loading');
     },
     { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
   );
@@ -599,18 +653,9 @@ function createCard(place, index) {
   const card = document.createElement('article');
   card.className = 'result-card';
   card.dataset.index = String(index);
-  card.tabIndex = 0;
-  card.setAttribute('role', 'button');
-  card.setAttribute('aria-label', `Xem gợi ý ${index + 1}: ${place.name}`);
   card.addEventListener('click', (event) => {
     if (event.target.closest('a, button')) return;
     selectResult(index);
-  });
-  card.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      selectResult(index);
-    }
   });
 
   const top = document.createElement('div');
@@ -637,7 +682,9 @@ function createCard(place, index) {
 
   const name = document.createElement('h3');
   name.className = 'result-name';
+  name.id = `result-name-${index}`;
   name.textContent = place.name;
+  card.setAttribute('aria-labelledby', name.id);
   info.append(name);
 
   const meta = document.createElement('div');
@@ -888,7 +935,6 @@ async function runSearch() {
 
     state.keyword = keyword;
     state.midpoint = center;
-    syncEndpoints();
     mapView.setEndpoints({
       people: state.people.map((person) => ({
         id: person.id,
@@ -958,9 +1004,13 @@ async function runSearch() {
     scrollToResultsOnMobile();
   } catch (error) {
     if (error.name === 'AbortError' || seq !== state.seq) return;
-    if (error.message === 'MISSING_LOCATION') {
+    if (
+      error.message === 'MISSING_LOCATION' ||
+      error.isLocationError ||
+      error.message === 'LOCATION_NOT_FOUND'
+    ) {
       restoreResults();
-      const missing = state.people.find((person) => !person.coords);
+      const missing = error.person || state.people.find((person) => !person.coords);
       missing?.input.focus();
       return;
     }
@@ -1111,19 +1161,22 @@ function initialize() {
     chip.addEventListener('click', () => {
       keywordInput.value = chip.dataset.keyword;
       updateChips();
+      if (state.results.length > 0 || state.loading) clearResults();
       updateSearchButton();
     });
   }
 
   keywordInput.addEventListener('input', () => {
     updateChips();
+    if (state.results.length > 0 || state.loading) clearResults();
     updateSearchButton();
   });
 
   radiusInput.addEventListener('input', () => {
     state.radiusKm = Number(radiusInput.value);
     radiusValue.textContent = `${state.radiusKm} km`;
-    syncEndpoints();
+    if (state.results.length > 0 || state.loading) clearResults();
+    refreshEndpointRadius();
     updateSearchButton();
   });
 
